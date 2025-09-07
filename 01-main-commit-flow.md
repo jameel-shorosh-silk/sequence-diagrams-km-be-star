@@ -5,51 +5,64 @@ This diagram shows the high-level flow from commit completion to sending commit 
 ```mermaid
 sequenceDiagram
     participant App as Application
-    participant CommitDone as km_be_star_commit_is_done
-    participant SendCommit as km_be_star_send_commit_id
-    participant Wait as km_be_star_wait_4_send_commit_id_completion
-    participant Topology as km_topology_connected_be_scan
-    participant KUIC as km_be_kuic_mgr_access_pbe_bs
-    participant BS as km_bs_send_req
+    participant Star as km_be_star.c
+    participant Topology as km_topology.c
+    participant KUIC as km_be_kuic_mgr.c
+    participant BS as km_bs.c
+    participant Mutex as km_mutex.c
     participant PBE as Remote PBE Instances
 
-    App->>CommitDone: Commit completion request
-    Note over CommitDone: Process journal metadata<br/>Send AL sync if needed<br/>Notify post-commit callback
+    App->>Star: Commit completion request
+    Note over Star: Process journal metadata<br/>Send AL sync if needed<br/>Notify post-commit callback
     
-    CommitDone->>SendCommit: km_be_star_send_commit_id(star)
+    Star->>Star: km_be_star_send_commit_id(star)
     
-    SendCommit->>SendCommit: Check if in PBE instance
+    Star->>Star: Check if in PBE instance
     alt Not in PBE instance
-        SendCommit-->>CommitDone: return (early exit)
+        Star-->>Star: return (early exit)
     end
     
-    SendCommit->>Wait: km_be_star_wait_4_send_commit_id_completion(star)
-    Wait->>Wait: Lock mutex and wait for inflight == 0
-    Wait-->>SendCommit: All previous operations complete
+    Note over Star,Mutex: Wait for previous operations to complete
+    Star->>Star: km_be_star_wait_4_send_commit_id_completion(star)
+    Star->>Mutex: Lock(&star->targets.mux)
+    loop while star->targets.inflight > 0
+        Star->>Mutex: Wait(&star->targets.cond, &star->targets.mux)
+    end
+    Star->>Mutex: Unlock(&star->targets.mux)
     
-    SendCommit->>SendCommit: Increment initial inflights counter
+    Star->>Star: Increment initial inflights counter
+    Star->>Mutex: Lock(&star->targets.mux)
+    Star->>Mutex: star->targets.inflight++
+    Star->>Mutex: Unlock(&star->targets.mux)
     
-    SendCommit->>Topology: Scan connected BE entries
-    Topology-->>SendCommit: For each PBE entry
+    Star->>Topology: Get topology and scan BE entries
+    Topology-->>Star: For each BE entry
     
     loop For each PBE instance
-        SendCommit->>SendCommit: Skip if not PBE type or same logical ID
-        SendCommit->>KUIC: Get BS descriptor for PBE
-        KUIC-->>SendCommit: bs_desc
+        Star->>Star: Skip if not PBE type or same logical ID
+        Star->>KUIC: Access PBE BS descriptor
+        KUIC-->>Star: bs_desc
         
-        alt BS descriptor available
-            SendCommit->>SendCommit: Initialize BS request with aux info
-            SendCommit->>BS: Send async request
+        alt bs_desc available
+            Star->>Star: Set target context and aux info
+            Star->>BS: Send async request
             BS->>PBE: Send commit ID message
-            SendCommit->>SendCommit: Increment inflights counter
-        else BS descriptor not available
-            SendCommit->>SendCommit: Log error and continue
+            Star->>Star: Increment inflights counter
+            Star->>Mutex: Lock(&star->targets.mux)
+            Star->>Mutex: star->targets.inflight++
+            Star->>Mutex: Unlock(&star->targets.mux)
+        else bs_desc is NULL
+            Star->>Star: Log error and continue
         end
     end
     
-    SendCommit->>SendCommit: Decrement initial inflights counter
-    SendCommit-->>CommitDone: Function complete (async callbacks continue)
+    Star->>Star: Decrement initial inflights counter
+    Star->>Mutex: Lock(&star->targets.mux)
+    Star->>Mutex: star->targets.inflight--
+    Star->>Mutex: Signal condition if inflight == 0
+    Star->>Mutex: Unlock(&star->targets.mux)
     
-    CommitDone->>CommitDone: Increment closed commits counter
-    CommitDone-->>App: Commit done
+    Star-->>Star: Function returns (async callbacks continue)
+    Star->>Star: Increment closed commits counter
+    Star-->>App: Commit done
 ```
