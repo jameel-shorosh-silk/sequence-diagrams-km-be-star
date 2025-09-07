@@ -25,6 +25,21 @@ Illustrates how async callbacks are processed in parallel for multiple PBE insta
 ### 4. [Complete Flow with Error Handling](04-complete-flow-with-error-handling.md)
 Shows the complete end-to-end flow including all error handling paths.
 
+### 5. [Original Complete Diagram](05-original-complete-diagram.md) ⭐ **NEW**
+The complete, detailed sequence diagram with all interactions and updated participant names.
+
+## Participants (Updated)
+
+The diagrams now use more accurate participant names that reflect the actual source files:
+
+- **Application** - The calling application
+- **km_be_star.c** - Main star backend implementation
+- **km_topology.c** - Topology management functions
+- **km_be_kuic_mgr.c** - KUIC manager for PBE communication
+- **km_bs.c** - Block storage layer
+- **km_mutex.c** - Mutex and synchronization primitives
+- **Remote PBE 1/2/N** - Remote Persistent Block Engine instances
+
 ## How to View the Diagrams
 
 ### Option 1: GitHub (Recommended)
@@ -78,6 +93,13 @@ You can export these diagrams as PNG/SVG using:
 - **Resource Management**: Careful acquisition and release of BS descriptors
 - **Error Handling**: Comprehensive error checking and logging at each step
 - **Scalability**: Handles multiple PBE instances in parallel
+
+## Recent Updates
+
+- ✅ Updated all participant names to reflect actual source files (km_be_star.c, km_topology.c, etc.)
+- ✅ Added complete original diagram with all detailed interactions
+- ✅ Improved accuracy of function names and module references
+- ✅ Enhanced clarity of synchronization mechanisms
 
 ## Contributing
 
