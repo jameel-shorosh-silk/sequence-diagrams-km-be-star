@@ -4,42 +4,49 @@ This diagram shows the detailed synchronization mechanisms and counter managemen
 
 ```mermaid
 sequenceDiagram
-    participant SendCommit as km_be_star_send_commit_id
-    participant Wait as km_be_star_wait_4_send_commit_id_completion
-    participant Inc as km_be_star_inc_num_target_inflights
-    participant Dec as km_be_star_dec_num_target_inflights
-    participant Mutex as Mutex/Condition Variable
+    participant Star as km_be_star.c
+    participant Mutex as km_mutex.c
 
-    SendCommit->>Wait: Wait for previous operations
-    Wait->>Mutex: Lock(&star->targets.mux)
+    Note over Star,Mutex: Wait for previous operations to complete
+    Star->>Star: km_be_star_wait_4_send_commit_id_completion(star)
+    Star->>Mutex: Lock(&star->targets.mux)
     loop while star->targets.inflight > 0
-        Wait->>Mutex: Wait(&star->targets.cond, &star->targets.mux)
+        Star->>Mutex: Wait(&star->targets.cond, &star->targets.mux)
     end
-    Wait->>Mutex: Unlock(&star->targets.mux)
-    Wait-->>SendCommit: Previous operations complete
+    Star->>Mutex: Unlock(&star->targets.mux)
     
-    SendCommit->>Inc: Increment initial inflights counter
-    Inc->>Mutex: Lock(&star->targets.mux)
-    Inc->>Mutex: star->targets.inflight++
-    Inc->>Mutex: Unlock(&star->targets.mux)
-    Inc-->>SendCommit: Counter incremented
+    Note over Star,Mutex: Increment initial inflights counter
+    Star->>Star: km_be_star_inc_num_target_inflights()
+    Star->>Mutex: Lock(&star->targets.mux)
+    Star->>Mutex: star->targets.inflight++
+    Star->>Mutex: Unlock(&star->targets.mux)
     
-    Note over SendCommit: Process each PBE target
+    Note over Star: Process each PBE target
     
     loop For each successful request
-        SendCommit->>Inc: Increment inflights counter
-        Inc->>Mutex: Lock(&star->targets.mux)
-        Inc->>Mutex: star->targets.inflight++
-        Inc->>Mutex: Unlock(&star->targets.mux)
-        Inc-->>SendCommit: Counter incremented
+        Star->>Star: km_be_star_inc_num_target_inflights()
+        Star->>Mutex: Lock(&star->targets.mux)
+        Star->>Mutex: star->targets.inflight++
+        Star->>Mutex: Unlock(&star->targets.mux)
     end
     
-    SendCommit->>Dec: Decrement initial inflights counter
-    Dec->>Mutex: Lock(&star->targets.mux)
-    Dec->>Mutex: star->targets.inflight--
+    Note over Star,Mutex: Decrement initial inflights counter
+    Star->>Star: km_be_star_dec_num_target_inflights()
+    Star->>Mutex: Lock(&star->targets.mux)
+    Star->>Mutex: star->targets.inflight--
     alt inflight == 0
-        Dec->>Mutex: Signal(&star->targets.cond)
+        Star->>Mutex: Signal(&star->targets.cond)
     end
-    Dec->>Mutex: Unlock(&star->targets.mux)
-    Dec-->>SendCommit: Initial counter decremented
+    Star->>Mutex: Unlock(&star->targets.mux)
+    
+    Note over Star,Mutex: Async callback processing decrements counters
+    loop For each completed callback
+        Star->>Star: km_be_star_dec_num_target_inflights()
+        Star->>Mutex: Lock(&star->targets.mux)
+        Star->>Mutex: star->targets.inflight--
+        alt inflight == 0
+            Star->>Mutex: Signal(&star->targets.cond)
+        end
+        Star->>Mutex: Unlock(&star->targets.mux)
+    end
 ```
